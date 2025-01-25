@@ -1,0 +1,15 @@
+{
+
+  "type": "module",
+  "author": "",
+  "license": "ISC",
+  "description": "",
+  "dependencies": {
+    "axios": "^1.7.9",
+    "colors": "^1.4.0",
+    "fs": "^0.0.1-security",
+    "https-proxy-agent": "^7.0.6",
+    "web3": "^4.16.0"
+  }
+}
+
