@@ -74,17 +74,16 @@ const processWallet = async (walletIndex, privateKey, proxy) => {
   try {
     const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : "0x" + privateKey;
 
-
     const proxyUrl = new URL(proxy); 
     const ipAddress = proxyUrl.hostname;  
 
-    console.log(colors.cyan(`Ví ${walletIndex + 1} [IP: ${ipAddress}]: Đang xử lý...`));
+    console.log(colors.cyan(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Processing...`));
 
     const getLogin = await login(formattedPrivateKey, proxy);
     const getAiagent = await joinSpace(getLogin.accessToken, getLogin.user.id, proxy);
 
-    console.log(colors.green(`Ví ${walletIndex + 1} [IP: ${ipAddress}]: Đăng nhập thành công với địa chỉ: ${getLogin.user.walletAddress}`));
-    console.log(colors.green(`Ví ${walletIndex + 1} [IP: ${ipAddress}]: Số lượng AI Agent: ${getAiagent.aiagentId.length}`));
+    console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Successfully logged in with address: ${getLogin.user.walletAddress}`));
+    console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Number of AI Agents: ${getAiagent.aiagentId.length}`));
 
     for (let j = 0; j < getAiagent.aiagentId.length; j++) {
       const aiagentId = getAiagent.aiagentId[j];
@@ -108,23 +107,23 @@ const processWallet = async (walletIndex, privateKey, proxy) => {
         );
 
         if (joinSpaceResponse.status === 200) {
-          console.log(colors.green(`Ví ${walletIndex + 1} [IP: ${ipAddress}]: Tham gia Rap Battle thành công với Agent: ${agentName} (ID: ${aiagentId})`));
+          console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Successfully joined Rap Battle with Agent: ${agentName} (ID: ${aiagentId})`));
         }
       } catch (error) {
         console.log(
           colors.yellow(
-            `Ví ${walletIndex + 1} [IP: ${ipAddress}]: Tham gia thất bại với Agent: ${agentName} (ID: ${aiagentId}), Lý do: ${error.response?.data?.error || error.message}`
+            `Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Failed to join with Agent: ${agentName} (ID: ${aiagentId}), Reason: ${error.response?.data?.error || error.message}`
           )
         );
       }
     }
   } catch (error) {
-    console.error(colors.red(`Ví ${walletIndex + 1} [IP: ${proxy}]: Lỗi: ${error.message}`));
+    console.error(colors.red(`Wallet ${walletIndex + 1} [IP: ${proxy}]: Error: ${error.message}`));
   }
 };
 
 const main = async () => {
-  console.log(colors.blue("Khởi động chương trình Fractal Rap Battle..."));
+  console.log(colors.blue("Starting Fractal Rap Battle program..."));
 
   const wallets = (await fs.readFile("wallet.txt", "utf-8"))
     .replace(/\r/g, "")
@@ -137,18 +136,18 @@ const main = async () => {
     .filter(Boolean);
 
   if (wallets.length > proxies.length) {
-    console.error(colors.red("Lỗi: Không đủ proxy cho tất cả địa chỉ ví!"));
+    console.error(colors.red("Error: Not enough proxies for all wallet addresses!"));
     return;
   }
 
   while (true) {
-    console.log(colors.blue("Bắt đầu xử lý các ví..."));
+    console.log(colors.blue("Starting to process wallets..."));
 
     await Promise.all(
       wallets.map((privateKey, index) => processWallet(index, privateKey, proxies[index]))
     );
 
-    console.log(colors.blue("Hoàn thành xử lý, chờ 20 phút cho lần tiếp theo..."));
+    console.log(colors.blue("Processing complete, waiting 20 minutes for the next round..."));
     await delay(20 * 60 * 1000);
   }
 };
