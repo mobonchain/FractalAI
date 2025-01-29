@@ -94,7 +94,7 @@ const processWallet = async (walletIndex, privateKey, proxy) => {
           {
             userId: getLogin.user.id,
             agentId: aiagentId,
-            entryFees: 0.0001,
+            entryFees: 0.001,
             sessionTypeId: 1,
           },
           {
