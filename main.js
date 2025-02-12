@@ -6,6 +6,8 @@ import { HttpsProxyAgent } from "https-proxy-agent";
 
 const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
+const allowedState = 'na';
+
 const login = async (privateKey, proxy) => {
   const web3 = new Web3(new Web3.providers.HttpProvider("https://sepolia.infura.io"));
   const account = web3.eth.accounts.privateKeyToAccount(privateKey);
@@ -13,7 +15,7 @@ const login = async (privateKey, proxy) => {
 
   const httpsAgent = proxy ? new HttpsProxyAgent(proxy) : null;
 
-  const getNonce = await axios.get("https://dapp-backend-large.fractionai.xyz/api3/auth/nonce", {
+  const getNonce = await axios.get("https://dapp-backend-4x.fractionai.xyz/api3/auth/nonce", {
     httpsAgent,
   });
   const nonce = getNonce.data.nonce;
@@ -38,7 +40,7 @@ Issued At: ${issuedAt}`;
     referralCode: "DA0D6A15",
   };
 
-  const loginData = await axios.post("https://dapp-backend-large.fractionai.xyz/api3/auth/verify", payload, {
+  const loginData = await axios.post("https://dapp-backend-4x.fractionai.xyz/api3/auth/verify", payload, {
     headers: {
       "Content-Type": "application/json",
     },
@@ -48,13 +50,16 @@ Issued At: ${issuedAt}`;
   return loginData.data;
 };
 
-const joinSpace = async (bearer, id, proxy) => {
+const getAgents = async (accessToken, userId, proxy) => {
   const httpsAgent = proxy ? new HttpsProxyAgent(proxy) : null;
 
-  const getAiagent = await axios.get(`https://dapp-backend-large.fractionai.xyz/api3/agents/user/${id}`, {
+  const getAiagent = await axios.get(`https://dapp-backend-4x.fractionai.xyz/api3/agents/user/${userId}`, {
     headers: {
-      Authorization: `Bearer ${bearer}`,
-      "Content-Type": "application/json",
+      'Accept': 'application/json',
+      'Authorization': `Bearer ${accessToken}`,
+      'Host': 'dapp-backend-4x.fractionai.xyz',
+      'Allowed-State': allowedState, // Dùng giá trị allowedState từ đầu mã nguồn
+      'Origin': 'https://dapp.fractionai.xyz',
     },
     httpsAgent,
   });
@@ -70,17 +75,50 @@ const joinSpace = async (bearer, id, proxy) => {
   return { aiagentId, nameAgent };
 };
 
+const joinRapBattle = async (accessToken, userId, agentId, proxy) => {
+  const httpsAgent = proxy ? new HttpsProxyAgent(proxy) : null;
+
+  const headers = {
+    'Accept': 'application/json',
+    'Authorization': `Bearer ${accessToken}`,
+    'Host': 'dapp-backend-4x.fractionai.xyz',
+    'Allowed-State': allowedState,
+    'Origin': 'https://dapp.fractionai.xyz',
+  };
+
+  const data = {
+    userId: userId,
+    agentId: agentId, 
+    entryFees: 0.001,
+    sessionTypeId: 1, 
+  };
+
+  try {
+    const response = await axios.post(
+      `https://dapp-backend-4x.fractionai.xyz/api3/matchmaking/initiate`,
+      data,
+      { headers, httpsAgent } 
+    );
+
+    if (response.status === 200) {
+      console.log(colors.green(`🎤 Successfully joined Rap Battle with Agent: ${agentId}`));
+    }
+  } catch (error) {
+    console.log(colors.yellow(`⚠ Failed to join with Agent: ${agentId}, Reason: ${error.response?.data?.error || error.message}`));
+  }
+};
+
 const processWallet = async (walletIndex, privateKey, proxy) => {
   try {
     const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : "0x" + privateKey;
 
-    const proxyUrl = new URL(proxy); 
-    const ipAddress = proxyUrl.hostname;  
+    const proxyUrl = new URL(proxy);
+    const ipAddress = proxyUrl.hostname;
 
     console.log(colors.cyan(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Processing...`));
 
     const getLogin = await login(formattedPrivateKey, proxy);
-    const getAiagent = await joinSpace(getLogin.accessToken, getLogin.user.id, proxy);
+    const getAiagent = await getAgents(getLogin.accessToken, getLogin.user.id, proxy);
 
     console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Successfully logged in with address: ${getLogin.user.walletAddress}`));
     console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Number of AI Agents: ${getAiagent.aiagentId.length}`));
@@ -88,27 +126,10 @@ const processWallet = async (walletIndex, privateKey, proxy) => {
     for (let j = 0; j < getAiagent.aiagentId.length; j++) {
       const aiagentId = getAiagent.aiagentId[j];
       const agentName = getAiagent.nameAgent[j];
-      try {
-        const joinSpaceResponse = await axios.post(
-          `https://dapp-backend-large.fractionai.xyz/api3/matchmaking/initiate`,
-          {
-            userId: getLogin.user.id,
-            agentId: aiagentId,
-            entryFees: 0.001,
-            sessionTypeId: 1,
-          },
-          {
-            headers: {
-              Authorization: `Bearer ${getLogin.accessToken}`,
-              "Content-Type": "application/json",
-            },
-            httpsAgent: proxy ? new HttpsProxyAgent(proxy) : null,
-          }
-        );
 
-        if (joinSpaceResponse.status === 200) {
-          console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Successfully joined Rap Battle with Agent: ${agentName} (ID: ${aiagentId})`));
-        }
+      try {
+        await joinRapBattle(getLogin.accessToken, getLogin.user.id, aiagentId, proxy);
+        console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Successfully joined Rap Battle with Agent: ${agentName} (ID: ${aiagentId})`));
       } catch (error) {
         console.log(
           colors.yellow(
