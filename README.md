@@ -8,9 +8,11 @@
 # Hướng Dẫn Cài Đặt và Sử Dụng **Fractal AI Tool**
 
 ## Yêu Cầu:
-1. Đăng ký tài khoản trên **[Fractal AI](https://dapp.fractionai.xyz/?referral=DA0D6A15)**
-2. Tạo thành công **2 Agent** trong tài khoản của bạn
-3. Cài đặt **[Node.js](https://nodejs.org/en)** trên máy tính hoặc VPS của bạn
+1. Đăng ký **[2captcha](https://2captcha.com/)** nạp 3$ vào tài khoản
+- Mở tệp `main.js` lên tìm kiếm `const API_KEY = "YOUR_API_KEY";` thay **YOUR_API_KEY** bằng **API Key** từ **2captcha** của bạn
+2. Đăng ký tài khoản trên **[Fractal AI](https://dapp.fractionai.xyz/?referral=DA0D6A15)**
+3. Tạo thành công **2 Agent** trong tài khoản của bạn
+4. Cài đặt **[Node.js](https://nodejs.org/en)** trên máy tính hoặc VPS của bạn
 
 ---
 
