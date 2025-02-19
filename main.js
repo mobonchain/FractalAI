@@ -2,11 +2,66 @@ import axios from "axios";
 import colors from "colors";
 import Web3 from "web3";
 import fs from "fs/promises";
+import fetch from "node-fetch";
 import { HttpsProxyAgent } from "https-proxy-agent";
+import readlineSync from "readline-sync";  
 
-const delay = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const API_KEY = "YOUR_API_KEY";  // Thay bằng API 2captcha.com của bạn
 
-const allowedState = 'na';
+let RunningAll = false;
+let sessionTypeId = null;
+
+async function solveCaptcha(apiKey, imageUrl) {
+  try {
+    console.log("🔄 Đang gửi ảnh lên 2Captcha...");
+    const response = await fetch("http://2captcha.com/in.php", {
+      method: "POST",
+      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      body: new URLSearchParams({
+        key: apiKey,
+        method: "base64",
+        body: await getBase64(imageUrl),
+        json: 1,
+      }),
+    });
+
+    const data = await response.json();
+    if (data.status !== 1) throw new Error(`❌ Lỗi gửi CAPTCHA: ${data.request}`);
+
+    console.log(`✅ CAPTCHA được gửi thành công! ID: ${data.request}`);
+    return await getCaptchaResult(apiKey, data.request);
+  } catch (error) {
+    console.error("❌ Lỗi:", error.message);
+  }
+}
+
+async function getBase64(imageUrl) {
+  const response = await fetch(imageUrl);
+  const buffer = await response.arrayBuffer();
+  return Buffer.from(buffer).toString("base64");
+}
+
+async function getCaptchaResult(apiKey, requestId) {
+  const checkUrl = `http://2captcha.com/res.php?key=${apiKey}&action=get&id=${requestId}&json=1`;
+
+  console.log("⏳ Đang chờ kết quả...");
+
+  for (let i = 0; i < 15; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 5000)); 
+
+    const response = await fetch(checkUrl);
+    const data = await response.json();
+
+    if (data.status === 1) {
+      console.log(`🎉 CAPTCHA giải thành công: ${data.request}`);
+      return data.request;
+    }
+
+    console.log(`⌛ Chưa có kết quả, thử lại... (${i + 1}/15)`);
+  }
+
+  throw new Error("❌ Quá thời gian chờ CAPTCHA!");
+}
 
 const login = async (privateKey, proxy) => {
   const web3 = new Web3(new Web3.providers.HttpProvider("https://sepolia.infura.io"));
@@ -19,7 +74,6 @@ const login = async (privateKey, proxy) => {
     httpsAgent,
   });
   const nonce = getNonce.data.nonce;
-
   const issuedAt = new Date().toISOString();
   const message = `dapp.fractionai.xyz wants you to sign in with your Ethereum account:
 ${account.address}
@@ -33,7 +87,6 @@ Nonce: ${nonce}
 Issued At: ${issuedAt}`;
 
   const signature = web3.eth.accounts.sign(message, privateKey);
-
   const payload = {
     message,
     signature: signature.signature,
@@ -41,9 +94,7 @@ Issued At: ${issuedAt}`;
   };
 
   const loginData = await axios.post("https://dapp-backend-4x.fractionai.xyz/api3/auth/verify", payload, {
-    headers: {
-      "Content-Type": "application/json",
-    },
+    headers: { "Content-Type": "application/json" },
     httpsAgent,
   });
 
@@ -58,39 +109,45 @@ const getAgents = async (accessToken, userId, proxy) => {
       'Accept': 'application/json',
       'Authorization': `Bearer ${accessToken}`,
       'Host': 'dapp-backend-4x.fractionai.xyz',
-      'Allowed-State': allowedState, // Dùng giá trị allowedState từ đầu mã nguồn
+      'Allowed-State': 'na',
       'Origin': 'https://dapp.fractionai.xyz',
     },
     httpsAgent,
   });
 
   const aiagent = getAiagent.data;
-  const aiagentId = [];
-  const nameAgent = [];
-  for (let i = 0; i < aiagent.length; i++) {
-    aiagentId.push(aiagent[i].id);
-    nameAgent.push(aiagent[i].name);
-  }
+  const rapBattleAgents = [];
+  const dobbyArenaAgents = [];
 
-  return { aiagentId, nameAgent };
+  aiagent.forEach((agent) => {
+    if (agent.sessionTypeId === 1) {
+      rapBattleAgents.push(agent);
+    } else if (agent.sessionTypeId === 5) {
+      dobbyArenaAgents.push(agent);
+    }
+  });
+
+  return { rapBattleAgents, dobbyArenaAgents };
 };
 
-const joinRapBattle = async (accessToken, userId, agentId, proxy) => {
+const joinMatch = async (accessToken, userId, agentId, nonce, captchaText, sessionTypeId, proxy) => {
   const httpsAgent = proxy ? new HttpsProxyAgent(proxy) : null;
 
   const headers = {
     'Accept': 'application/json',
     'Authorization': `Bearer ${accessToken}`,
     'Host': 'dapp-backend-4x.fractionai.xyz',
-    'Allowed-State': allowedState,
+    'Allowed-State': 'na',
     'Origin': 'https://dapp.fractionai.xyz',
   };
 
   const data = {
     userId: userId,
-    agentId: agentId, 
+    agentId: agentId,
     entryFees: 0.001,
-    sessionTypeId: 1, 
+    sessionTypeId: sessionTypeId,
+    nonce: nonce,
+    captchaText: captchaText,
   };
 
   try {
@@ -101,50 +158,71 @@ const joinRapBattle = async (accessToken, userId, agentId, proxy) => {
     );
 
     if (response.status === 200) {
-      console.log(colors.green(`🎤 Successfully joined Rap Battle with Agent: ${agentId}`));
+      console.log(colors.green(`🎤 Thành công tham gia trận đấu với agent: ${agentId}`));
     }
   } catch (error) {
-    console.log(colors.yellow(`⚠ Failed to join with Agent: ${agentId}, Reason: ${error.response?.data?.error || error.message}`));
+    if (error.response?.data?.error === "Invalid captcha") {
+      console.log(colors.red("⚠ Lỗi: Invalid captcha, thử lại..."));
+      return false;
+    }
+    console.log(colors.yellow(`⚠ Lỗi tham gia trận đấu với agent: ${agentId}, Lý do: ${error.response?.data?.error || error.message}`));
   }
+
+  return true; 
 };
 
 const processWallet = async (walletIndex, privateKey, proxy) => {
   try {
     const formattedPrivateKey = privateKey.startsWith("0x") ? privateKey : "0x" + privateKey;
-
     const proxyUrl = new URL(proxy);
     const ipAddress = proxyUrl.hostname;
 
-    console.log(colors.cyan(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Processing...`));
+    console.log(colors.cyan(`Ví ${walletIndex + 1} [IP: ${ipAddress}]: Đang xử lý...`));
 
     const getLogin = await login(formattedPrivateKey, proxy);
-    const getAiagent = await getAgents(getLogin.accessToken, getLogin.user.id, proxy);
+    const { rapBattleAgents, dobbyArenaAgents } = await getAgents(getLogin.accessToken, getLogin.user.id, proxy);
 
-    console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Successfully logged in with address: ${getLogin.user.walletAddress}`));
-    console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Number of AI Agents: ${getAiagent.aiagentId.length}`));
+    console.log(colors.green(`Ví ${walletIndex + 1} [IP: ${ipAddress}]: Đăng nhập thành công với địa chỉ: ${getLogin.user.walletAddress}`));
+    console.log(colors.green(`Ví ${walletIndex + 1} [IP: ${ipAddress}]: Số lượng AI Agents: Rap Battle: ${rapBattleAgents.length}, Dobby Arena: ${dobbyArenaAgents.length}`));
 
-    for (let j = 0; j < getAiagent.aiagentId.length; j++) {
-      const aiagentId = getAiagent.aiagentId[j];
-      const agentName = getAiagent.nameAgent[j];
+    let selectedAgents = RunningAll ? [...rapBattleAgents, ...dobbyArenaAgents] : sessionTypeId === 1 ? rapBattleAgents : dobbyArenaAgents;
 
-      try {
-        await joinRapBattle(getLogin.accessToken, getLogin.user.id, aiagentId, proxy);
-        console.log(colors.green(`Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Successfully joined Rap Battle with Agent: ${agentName} (ID: ${aiagentId})`));
-      } catch (error) {
-        console.log(
-          colors.yellow(
-            `Wallet ${walletIndex + 1} [IP: ${ipAddress}]: Failed to join with Agent: ${agentName} (ID: ${aiagentId}), Reason: ${error.response?.data?.error || error.message}`
-          )
-        );
+    if (selectedAgents.length === 0) {
+      console.log(colors.red("Không có agent nào để tham gia trận đấu."));
+      return;
+    }
+
+    for (let agent of selectedAgents) {
+      let success = false;
+      while (!success) {
+        const captchaData = await axios.get("https://dapp-backend-4x.fractionai.xyz/api3/auth/nonce", {
+          headers: { 'Allowed-State': 'na' },
+        });
+
+        const captchaText = await solveCaptcha(API_KEY, captchaData.data.image);
+        if (!captchaText) {
+          console.log(colors.red("Không thể giải CAPTCHA."));
+          return;
+        }
+
+        success = await joinMatch(getLogin.accessToken, getLogin.user.id, agent.id, captchaData.data.nonce, captchaText, agent.sessionTypeId, proxy);
       }
     }
   } catch (error) {
-    console.error(colors.red(`Wallet ${walletIndex + 1} [IP: ${proxy}]: Error: ${error.message}`));
+    console.error(colors.red(`Ví ${walletIndex + 1} [IP: ${proxy}]: Lỗi: ${error.message}`));
   }
 };
 
 const main = async () => {
-  console.log(colors.blue("Starting Fractal Rap Battle program..."));
+  const runAllChoice = readlineSync.question('Bạn muốn cho tất cả AI Agent tham gia thi không (yes/no): ');
+  RunningAll = runAllChoice.toLowerCase() === 'yes';
+
+  if (!RunningAll) {
+    const sessionTypeChoice = readlineSync.question('Bạn muốn tham gia trận đấu Rap Battle (1) hay Dobby Arena (5)? (Nhập 1 hoặc 5): ');
+    sessionTypeId = (sessionTypeChoice === '5') ? 5 : 1;
+  }
+
+  console.log(colors.blue("Bắt đầu chương trình tham gia Rap Battle/Dobby Arena..."));
 
   const wallets = (await fs.readFile("wallet.txt", "utf-8"))
     .replace(/\r/g, "")
@@ -157,19 +235,19 @@ const main = async () => {
     .filter(Boolean);
 
   if (wallets.length > proxies.length) {
-    console.error(colors.red("Error: Not enough proxies for all wallet addresses!"));
+    console.error(colors.red("Lỗi: Không đủ proxies cho tất cả các ví!"));
     return;
   }
 
   while (true) {
-    console.log(colors.blue("Starting to process wallets..."));
+    console.log(colors.blue("Đang bắt đầu xử lý ví..."));
 
-    await Promise.all(
-      wallets.map((privateKey, index) => processWallet(index, privateKey, proxies[index]))
-    );
+    for (let i = 0; i < wallets.length; i++) {
+      await processWallet(i, wallets[i], proxies[i]);
+    }
 
-    console.log(colors.blue("Processing complete, waiting 20 minutes for the next round..."));
-    await delay(20 * 60 * 1000);
+    console.log(colors.blue("Xử lý hoàn tất, chờ 60 phút để tiếp tục..."));
+    await new Promise(resolve => setTimeout(resolve, 60 * 60 * 1000));
   }
 };
 
