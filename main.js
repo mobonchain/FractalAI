@@ -4,9 +4,9 @@ import Web3 from "web3";
 import fs from "fs/promises";
 import fetch from "node-fetch";
 import { HttpsProxyAgent } from "https-proxy-agent";
-import readlineSync from "readline-sync";  
+import readlineSync from "readline-sync";
 
-const API_KEY = "YOUR_API_KEY";  // Thay bằng API 2captcha.com của bạn
+const API_KEY = "YOUR_API_KEY"; // Thay bằng API 2captcha.com của bạn
 
 let RunningAll = false;
 let sessionTypeId = null;
@@ -47,7 +47,7 @@ async function getCaptchaResult(apiKey, requestId) {
   console.log("⏳ Đang chờ kết quả...");
 
   for (let i = 0; i < 15; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 5000)); 
+    await new Promise((resolve) => setTimeout(resolve, 5000));
 
     const response = await fetch(checkUrl);
     const data = await response.json();
@@ -165,10 +165,16 @@ const joinMatch = async (accessToken, userId, agentId, nonce, captchaText, sessi
       console.log(colors.red("⚠ Lỗi: Invalid captcha, thử lại..."));
       return false;
     }
+
+    if (error.response?.data?.error.includes("User has reached maximum number of sessions")) {
+      console.log(colors.red("⚠ Lỗi: Đã đạt giới hạn phiên đấu, bỏ qua ví này."));
+      return false;  // Bỏ qua ví nếu đạt giới hạn phiên đấu
+    }
+
     console.log(colors.yellow(`⚠ Lỗi tham gia trận đấu với agent: ${agentId}, Lý do: ${error.response?.data?.error || error.message}`));
   }
 
-  return true; 
+  return true;
 };
 
 const processWallet = async (walletIndex, privateKey, proxy) => {
@@ -214,7 +220,7 @@ const processWallet = async (walletIndex, privateKey, proxy) => {
 };
 
 const main = async () => {
-  const runAllChoice = readlineSync.question('Bạn muốn cho tất cả AI Agent tham gia thi không (yes/no): ');
+  const runAllChoice = readlineSync.question('Bạn muốn tham gia tất cả các agent? (yes/no): ');
   RunningAll = runAllChoice.toLowerCase() === 'yes';
 
   if (!RunningAll) {
