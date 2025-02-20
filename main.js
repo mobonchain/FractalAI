@@ -6,7 +6,7 @@ import fetch from "node-fetch";
 import { HttpsProxyAgent } from "https-proxy-agent";
 import readlineSync from "readline-sync";
 
-const API_KEY = "YOUR_API_KEY"; // Thay bằng API 2captcha.com của bạn
+const API_KEY = "YOUR_API_KEY";
 
 let RunningAll = false;
 let sessionTypeId = null;
@@ -159,19 +159,22 @@ const joinMatch = async (accessToken, userId, agentId, nonce, captchaText, sessi
 
     if (response.status === 200) {
       console.log(colors.green(`🎤 Thành công tham gia trận đấu với agent: ${agentId}`));
+      return true;
     }
   } catch (error) {
-    if (error.response?.data?.error === "Invalid captcha") {
+    const errorMessage = error.response?.data?.error || error.message;
+
+    if (errorMessage === "Invalid captcha") {
       console.log(colors.red("⚠ Lỗi: Invalid captcha, thử lại..."));
       return false;
     }
 
-    if (error.response?.data?.error.includes("User has reached maximum number of sessions")) {
+    if (errorMessage.includes("User has reached maximum number of sessions")) {
       console.log(colors.red("⚠ Lỗi: Đã đạt giới hạn phiên đấu, bỏ qua ví này."));
-      return false;  // Bỏ qua ví nếu đạt giới hạn phiên đấu
+      return null;
     }
 
-    console.log(colors.yellow(`⚠ Lỗi tham gia trận đấu với agent: ${agentId}, Lý do: ${error.response?.data?.error || error.message}`));
+    console.log(colors.yellow(`⚠ Lỗi tham gia trận đấu với agent: ${agentId}, Lý do: ${errorMessage}`));
   }
 
   return true;
@@ -198,6 +201,7 @@ const processWallet = async (walletIndex, privateKey, proxy) => {
       return;
     }
 
+  
     for (let agent of selectedAgents) {
       let success = false;
       while (!success) {
@@ -212,6 +216,11 @@ const processWallet = async (walletIndex, privateKey, proxy) => {
         }
 
         success = await joinMatch(getLogin.accessToken, getLogin.user.id, agent.id, captchaData.data.nonce, captchaText, agent.sessionTypeId, proxy);
+        
+        if (success === null) {
+          console.log(colors.yellow(`Ví ${walletIndex + 1} [IP: ${ipAddress}]: Đạt giới hạn phiên đấu, dừng xử lý.`));
+          return;
+        }
       }
     }
   } catch (error) {
