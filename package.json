@@ -9,6 +9,7 @@
     "colors": "^1.4.0",
     "fs": "^0.0.1-security",
     "https-proxy-agent": "^7.0.6",
+    "readline-sync": "^1.4.10",
     "web3": "^4.16.0"
   }
 }
